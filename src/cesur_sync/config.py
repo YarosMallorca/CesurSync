@@ -1,7 +1,7 @@
 import os
 
 CESUR_BASE_URL = os.environ.get(
-    "CESUR_BASE_URL", "https://campusonline.cesurformacion.com"
+    "CESUR_BASE_URL", "https://campusonline2026.cesurformacion.com"
 )
 CESUR_TIMEZONE = os.environ.get("CESUR_TIMEZONE", "Europe/Madrid")
 PROFILE_DIR = os.environ.get("PROFILE_DIR", "./browser_profile")

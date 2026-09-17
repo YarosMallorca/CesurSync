@@ -33,15 +33,6 @@ def notify(message: str):
             print(f"[notify] ha fallado al enviar la alerta: {e}")
 
 
-def write_output(assignments: list[dict]):
-    payload = {
-        "generated_at": datetime.now(ZoneInfo(CESUR_TIMEZONE)).isoformat(),
-        "count": len(assignments),
-        "assignments": assignments,
-    }
-    Path(OUTPUT_FILE).write_text(json.dumps(payload, indent=2, ensure_ascii=False))
-
-
 def ensure_logged_in(page: Page) -> bool:
     page.goto(f"{CESUR_BASE_URL}/my/", wait_until="networkidle")
 
@@ -89,6 +80,158 @@ def get_courses(page: Page) -> list[dict]:
     return courses
 
 
+def get_tutorials(page: Page) -> list[dict]:
+    page.goto(f"{CESUR_BASE_URL}/local/tutorials/index.php", wait_until="networkidle")
+
+    sesskey = page.evaluate("() => M.cfg.sesskey")
+    contextid = page.evaluate("() => M.cfg.contextid")
+
+    payload = [
+        {
+            "index": 0,
+            "methodname": "core_get_fragment",
+            "args": {
+                "component": "local_tutorials",
+                "callback": "mytutorials_list",
+                "contextid": contextid,
+                "args": [
+                    {"name": "courseid", "value": 0},
+                    {"name": "typefilter", "value": ""},
+                    {"name": "search", "value": ""},
+                    {"name": "sortkey", "value": ""},
+                    {"name": "sortorder", "value": ""},
+                    {"name": "statefilter", "value": ""},
+                    {"name": "page", "value": 0},
+                    {"name": "perpage", "value": 100},
+                ],
+            },
+        }
+    ]
+
+    result = page.evaluate(
+        """
+        async ({ path, payload }) => {
+            const resp = await fetch(path, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+                credentials: "same-origin",
+            });
+            return await resp.json();
+        }
+        """,
+        {
+            "path": f"/lib/ajax/service.php?sesskey={sesskey}&info=core_get_fragment",
+            "payload": payload,
+        },
+    )
+
+    if not isinstance(result, list) or result[0].get("error"):
+        print(f"  [!] Tutorials fragment call returned an error: {result}")
+        return []
+
+    html = result[0]["data"]["html"]
+    soup = BeautifulSoup(html, "html.parser")
+
+    table = soup.find("table")
+    if not table:
+        print("  [!] No <table> found inside the tutorials fragment HTML.")
+        return []
+
+    headers = [th.get_text(strip=True).lower() for th in table.find_all("th")]
+
+    def col_index(*keywords):
+        for i, h in enumerate(headers):
+            if any(k in h for k in keywords):
+                return i
+        return None
+
+    title_idx = col_index("título", "title")
+    when_idx = col_index("fecha y hora", "fecha", "date")
+    type_idx = col_index("tipo", "type")
+    course_idx = col_index("curso", "course")
+    tutor_idx = col_index("tutor")
+    state_idx = col_index("estado", "state")
+
+    tutorials = []
+    body_rows = (
+        table.find("tbody").find_all("tr")
+        if table.find("tbody")
+        else table.find_all("tr")[1:]
+    )
+
+    def cell_text(cells, idx: int | None):
+        if idx is None or idx >= len(cells):
+            return None
+        return cells[idx].get_text(" ", strip=True)
+
+    for row in body_rows:
+        cells = row.find_all("td")
+        if not cells:
+            continue
+
+        title = cell_text(cells, title_idx)
+        when_text = cell_text(cells, when_idx)
+        when_start, when_end = parse_tutorial_when(when_text)
+
+        link = (
+            cells[title_idx].find("a")
+            if title_idx is not None and title_idx < len(cells)
+            else None
+        )
+        href = link.get("href") if link else None
+
+        tutorials.append(
+            {
+                "key": f"tutorial-{href or title}",
+                "title": title,
+                "when_raw": when_text,
+                "when_start": when_start,
+                "when_end": when_end,
+                "type": cell_text(cells, type_idx),
+                "course": cell_text(cells, course_idx),
+                "tutor": cell_text(cells, tutor_idx),
+                "state": cell_text(cells, state_idx),
+                "url": href,
+            }
+        )
+
+    return tutorials
+
+
+def parse_cesur_date(text: str):
+    return dateparser.parse(
+        text,
+        languages=["es"],
+        settings={"TIMEZONE": CESUR_TIMEZONE, "RETURN_AS_TIMEZONE_AWARE": True},
+    )
+
+
+def parse_tutorial_when(when_raw: str | None):
+    if not when_raw:
+        return None, None
+
+    parts = re.split(r"\s*[–—-]\s*", when_raw)
+    if len(parts) != 2:
+        dt = parse_cesur_date(when_raw)
+        return (dt.isoformat() if dt else None), None
+
+    start_text, end_text = parts[0].strip(), parts[1].strip()
+    start_dt = parse_cesur_date(start_text)
+    if not start_dt:
+        return None, None
+
+    end_match = re.match(r"^(\d{1,2}):(\d{2})$", end_text)
+    if end_match:
+        end_dt = start_dt.replace(
+            hour=int(end_match.group(1)), minute=int(end_match.group(2))
+        )
+    else:
+        end_dt = parse_cesur_date(end_text)
+
+    return start_dt.isoformat(), (end_dt.isoformat() if end_dt else None)
+
+
 def get_assignments_for_course(page, course_id: str, course_name: str) -> list[dict]:
     url = f"{CESUR_BASE_URL}/mod/assign/index.php?id={course_id}"
     page.goto(url, wait_until="networkidle")
@@ -134,11 +277,7 @@ def get_assignments_for_course(page, course_id: str, course_name: str) -> list[d
         if not due_text or due_text == "-":
             continue  # no hay fecha de límite
 
-        due_dt = dateparser.parse(
-            due_text,
-            languages=["es"],
-            settings={"TIMEZONE": CESUR_TIMEZONE, "RETURN_AS_TIMEZONE_AWARE": True},
-        )
+        due_dt = parse_cesur_date(due_text)
         if not due_dt:
             print(
                 f"  [!] No se pudo parsear la fecha de entrega '{due_text}' para '{name_text}', omitiendo."
@@ -158,6 +297,15 @@ def get_assignments_for_course(page, course_id: str, course_name: str) -> list[d
         )
 
     return assignments
+
+
+def write_output(assignments: list[dict], tutorials: list[dict]):
+    payload = {
+        "generated_at": datetime.now(ZoneInfo(CESUR_TIMEZONE)).isoformat(),
+        "assignments": assignments,
+        "tutorials": tutorials,
+    }
+    Path(OUTPUT_FILE).write_text(json.dumps(payload, indent=2, ensure_ascii=False))
 
 
 def main():
@@ -182,11 +330,17 @@ def main():
             assignments = get_assignments_for_course(page, course["id"], course["name"])
             all_assignments.extend(assignments)
 
+        tutorials = get_tutorials(page)
+        print(f"Encontradas {len(tutorials)} tutorías")
+
+        pending_tutorials = [t for t in tutorials if t["state"] == "Programada"]
+
         context.close()
 
     print(f"\nEncontradas {len(all_assignments)} tareas con fecha de entrega")
+    print(f"Encontradas {len(pending_tutorials)} tutorías programadas")
 
-    write_output(all_assignments)
+    write_output(all_assignments, pending_tutorials)
     print(f"Escrito a {OUTPUT_FILE}")
 
 
