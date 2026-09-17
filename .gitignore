@@ -1,0 +1,22 @@
+# Python / uv
+__pycache__/
+*.py[cod]
+.venv/
+.ruff_cache/
+
+# Secrets and credentials
+.env
+credentials.json
+token.json
+
+# Logged-in browser session (Cesur + Microsoft SSO cookies)
+browser_profile/
+
+# Runtime output / state
+assignments.json
+sync_state.json
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
