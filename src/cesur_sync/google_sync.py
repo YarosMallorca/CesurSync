@@ -18,6 +18,7 @@ from cesur_sync.config import (
     GOOGLE_TASKLIST_NAME,
     OUTPUT_FILE,
     SYNC_STATE_FILE,
+    TUTORIAL_REMINDER_MINUTES,
 )
 from cesur_sync.formatting import Formatter
 from cesur_sync.google_auth import load_credentials
@@ -152,12 +153,25 @@ def list_existing_events(cal, calendar_id: str) -> dict[str, dict]:
             return existing
 
 
+def tutorial_reminders() -> dict:
+    if not TUTORIAL_REMINDER_MINUTES:
+        return {"useDefault": True}
+    if TUTORIAL_REMINDER_MINUTES.lower() == "none":
+        return {"useDefault": False}
+    return {
+        "useDefault": False,
+        "overrides": [{"method": "popup", "minutes": int(TUTORIAL_REMINDER_MINUTES)}],
+    }
+
+
 def event_differs(event: dict, body: dict) -> bool:
     if event.get("status") != "confirmed":
         return True
     for field in ("summary", "description"):
         if event.get(field, "") != body[field]:
             return True
+    if event.get("reminders") != body["reminders"]:
+        return True
     for field in ("start", "end"):
         current = event.get(field, {}).get("dateTime")
         if not current or datetime.fromisoformat(current) != datetime.fromisoformat(
@@ -193,6 +207,7 @@ def sync_tutorials(cal, calendar_id: str, tutorials: list[dict], fmt: Formatter)
             "start": {"dateTime": start.isoformat(), "timeZone": CESUR_TIMEZONE},
             "end": {"dateTime": end.isoformat(), "timeZone": CESUR_TIMEZONE},
             "status": "confirmed",
+            "reminders": tutorial_reminders(),
             "extendedProperties": {"private": {"cesurKey": t["key"]}},
         }
         wanted_ids.add(body["id"])

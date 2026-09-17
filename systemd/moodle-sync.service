@@ -1,0 +1,9 @@
+[Unit]
+Description=Scrape Cesur assignment due dates
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/cesur-sync
+EnvironmentFile=/opt/cesur-sync/.env
+ExecStart=/opt/cesur-sync/.venv/bin/cesur-scrape
+ExecStart=/opt/cesur-sync/.venv/bin/cesur-sync-google
