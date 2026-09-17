@@ -6,7 +6,6 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import dateparser
-import requests
 from bs4 import BeautifulSoup
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page, sync_playwright
@@ -14,23 +13,10 @@ from playwright.sync_api import Page, sync_playwright
 from cesur_sync.config import (
     CESUR_BASE_URL,
     CESUR_TIMEZONE,
-    NTFY_TOPIC,
     OUTPUT_FILE,
     PROFILE_DIR,
 )
-
-
-def notify(message: str):
-    print(f"[notify] {message}")
-    if NTFY_TOPIC:
-        try:
-            requests.post(
-                f"https://ntfy.sh/{NTFY_TOPIC}",
-                data=message.encode("utf-8"),
-                timeout=10,
-            )
-        except requests.RequestException as e:
-            print(f"[notify] ha fallado al enviar la alerta: {e}")
+from cesur_sync.notify import notify
 
 
 def ensure_logged_in(page: Page) -> bool:
