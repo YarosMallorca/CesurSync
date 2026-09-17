@@ -1,7 +1,9 @@
+import argparse
 import hashlib
 import json
 import re
 import sys
+import tomllib
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -11,11 +13,13 @@ from googleapiclient.errors import HttpError
 
 from cesur_sync.config import (
     CESUR_TIMEZONE,
+    FORMAT_RULES_FILE,
     GOOGLE_CALENDAR_NAME,
     GOOGLE_TASKLIST_NAME,
     OUTPUT_FILE,
     SYNC_STATE_FILE,
 )
+from cesur_sync.formatting import Formatter
 from cesur_sync.google_auth import load_credentials
 from cesur_sync.notify import notify
 
@@ -93,14 +97,22 @@ def list_existing_tasks(tasks, list_id: str) -> dict[str, dict]:
             return existing
 
 
-def sync_assignments(tasks, list_id: str, assignments: list[dict]):
+def task_title(a: dict, fmt: Formatter) -> str:
+    return fmt.apply(f"{a['name']} ({a['course']})", "tasks")
+
+
+def event_title(t: dict, fmt: Formatter) -> str:
+    return fmt.apply(t["title"], "events")
+
+
+def sync_assignments(tasks, list_id: str, assignments: list[dict], fmt: Formatter):
     existing = list_existing_tasks(tasks, list_id)
     created = updated = 0
 
     for a in assignments:
         due = datetime.fromisoformat(a["due"]).astimezone(ZoneInfo(CESUR_TIMEZONE))
         body = {
-            "title": f"{a['name']} ({a['course']})",
+            "title": task_title(a, fmt),
             "notes": f"{a['url']}\n[cesur:{a['key']}]",
             # Tasks ignora la hora; se envía la fecha local a medianoche UTC para que
             # no se desplace de día al convertir a UTC
@@ -155,7 +167,7 @@ def event_differs(event: dict, body: dict) -> bool:
     return False
 
 
-def sync_tutorials(cal, calendar_id: str, tutorials: list[dict]):
+def sync_tutorials(cal, calendar_id: str, tutorials: list[dict], fmt: Formatter):
     existing = list_existing_events(cal, calendar_id)
     created = updated = deleted = 0
     wanted_ids = set()
@@ -176,7 +188,7 @@ def sync_tutorials(cal, calendar_id: str, tutorials: list[dict]):
         )
         body = {
             "id": event_id(t["key"]),
-            "summary": t["title"],
+            "summary": event_title(t, fmt),
             "description": description,
             "start": {"dateTime": start.isoformat(), "timeZone": CESUR_TIMEZONE},
             "end": {"dateTime": end.isoformat(), "timeZone": CESUR_TIMEZONE},
@@ -212,7 +224,36 @@ def sync_tutorials(cal, calendar_id: str, tutorials: list[dict]):
     print(f"Tutorías: {created} creadas, {updated} actualizadas, {deleted} eliminadas")
 
 
+def preview(data: dict, fmt: Formatter):
+    print("Tareas:")
+    for a in data["assignments"]:
+        print(f"  {a['name']} ({a['course']})\n    → {task_title(a, fmt)}")
+    print("\nTutorías:")
+    for t in data["tutorials"]:
+        print(f"  {t['title']}\n    → {event_title(t, fmt)}")
+
+
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--preview",
+        action="store_true",
+        help="muestra cómo quedan los títulos con las reglas de formato, sin tocar Google",
+    )
+    args = parser.parse_args()
+
+    try:
+        fmt = Formatter.from_file(FORMAT_RULES_FILE)
+    except (ValueError, tomllib.TOMLDecodeError) as e:
+        notify(f"Cesur sync: error en las reglas de formato: {e}")
+        sys.exit(1)
+
+    data = json.loads(Path(OUTPUT_FILE).read_text())
+
+    if args.preview:
+        preview(data, fmt)
+        return
+
     creds = load_credentials()
     if creds is None:
         notify(
@@ -221,7 +262,6 @@ def main():
         )
         sys.exit(1)
 
-    data = json.loads(Path(OUTPUT_FILE).read_text())
     state = load_state()
 
     tasks = build("tasks", "v1", credentials=creds, cache_discovery=False)
@@ -234,8 +274,8 @@ def main():
         )
         sys.exit(1)
 
-    sync_assignments(tasks, tasklist_id, data["assignments"])
-    sync_tutorials(cal, ensure_calendar(cal, state), data["tutorials"])
+    sync_assignments(tasks, tasklist_id, data["assignments"], fmt)
+    sync_tutorials(cal, ensure_calendar(cal, state), data["tutorials"], fmt)
 
 
 if __name__ == "__main__":
