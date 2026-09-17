@@ -1,0 +1,34 @@
+[tools]
+uv = "0.11.32"
+
+[tasks.setup]
+description = "Instalar dependencias y el navegador de Playwright"
+run = ["uv sync", "uv run playwright install chromium"]
+
+[tasks.login]
+description = "Iniciar sesión en el campus (abre el navegador)"
+run = "uv run cesur-login"
+
+[tasks.google-login]
+description = "Autorizar acceso a Google Tasks & Calendar"
+run = "uv run cesur-google-login"
+
+[tasks.scrape]
+description = "Extraer tareas y tutorías del campus"
+run = "uv run cesur-scrape"
+
+[tasks.sync-google]
+description = "Sincronizar con Google Tasks & Calendar"
+run = "uv run cesur-sync-google"
+
+[tasks.sync]
+description = "Scrape + sincronización con Google"
+run = ["mise run scrape", "mise run sync-google"]
+
+[tasks.lint]
+description = "Comprobar formato y lint con ruff"
+run = ["uv run ruff check", "uv run ruff format --check"]
+
+[tasks.fmt]
+description = "Formatear y aplicar fixes con ruff"
+run = ["uv run ruff check --fix", "uv run ruff format"]
