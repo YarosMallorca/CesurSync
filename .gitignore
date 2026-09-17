@@ -15,6 +15,7 @@ browser_profile/
 # Runtime output / state
 assignments.json
 sync_state.json
+format_rules.toml
 
 # OS / editor
 .DS_Store
