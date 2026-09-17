@@ -1,7 +1,7 @@
 [project]
 name = "cesur-sync"
 version = "0.1.0"
-description = "Scraper de campus online de Cesur (basado en Cesur) para sincronizar tareas y entregas con Google Tasks & Calendar"
+description = "Scraper de campus online de Cesur para sincronizar tareas y entregas con Google Tasks & Calendar"
 requires-python = ">=3.12"
 dependencies = [
     "playwright>=1.45",
