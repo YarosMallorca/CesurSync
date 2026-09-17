@@ -29,7 +29,7 @@ wheels = [
 ]
 
 [[package]]
-name = "cesur-assignment-sync"
+name = "cesur-sync"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
