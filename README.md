@@ -8,6 +8,8 @@ Scraper del campus online de Cesur que vuelca las tareas con fecha de entrega en
 Google Tasks y las tutorías programadas en Google Calendar. Se ejecuta solo, cada
 hora, y te avisa si algo se rompe.
 
+(HERRAMIENTA NO OFICIAL, NO AUTORIZADA POR CESUR. USA BAJO TU RESPONSABILIDAD.)
+
 [![Python](https://img.shields.io/badge/Python-3.12%2B-3776ab?style=flat-square&logo=python&logoColor=white)](https://www.python.org)
 [![uv](https://img.shields.io/badge/gestionado%20con-uv-de5fe9?style=flat-square&logo=uv&logoColor=white)](https://docs.astral.sh/uv/)
 [![Playwright](https://img.shields.io/badge/Playwright-Chromium-2ead33?style=flat-square&logo=playwright&logoColor=white)](https://playwright.dev/python/)
