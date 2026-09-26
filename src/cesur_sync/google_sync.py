@@ -216,8 +216,10 @@ def sync_tutorials(cal, calendar_id: str, tutorials: list[dict], fmt: Formatter)
         if event is None:
             cal.events().insert(calendarId=calendar_id, body=body).execute()
             created += 1
+        elif event.get("status") == "cancelled":
+            # Borrado en Calendar: no se restaura, igual que las tareas eliminadas
+            continue
         elif event_differs(event, body):
-            # También restaura eventos cancelados si la tutoría vuelve a estar programada
             cal.events().patch(
                 calendarId=calendar_id, eventId=body["id"], body=body
             ).execute()
