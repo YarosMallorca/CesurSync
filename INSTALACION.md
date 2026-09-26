@@ -269,19 +269,61 @@ uv run cesur-sync-google --preview
 ## Ejecución automática
 
 En [`systemd/`](systemd) hay un _service_ y un _timer_ que ejecutan el scrape y la
-sincronización cada hora. Copia el proyecto a `/opt/cesur-sync` (con el
-`browser_profile/` y el `token.json` ya generados en tu equipo) y activa el timer:
+sincronización cada hora. Las rutas del _service_ apuntan a `/opt/cesur-sync`: si
+instalas el proyecto en otro sitio, cámbialas antes de copiarlo a systemd.
+
+### 1. Preparar el servidor
+
+Copia el proyecto a `/opt/cesur-sync`, instálalo con `mise run setup` y añade las
+librerías del sistema que necesita Chromium, que en una instalación mínima de
+Debian o Ubuntu no vienen:
+
+```bash
+uv run playwright install-deps chromium
+```
+
+Copia también desde tu equipo `.env`, `credentials.json`, `token.json` y, si ya
+has sincronizado desde él, `sync_state.json` (sin él, el servidor crea un
+calendario nuevo en lugar de reutilizar el tuyo). El token de Google es un JSON
+normal y funciona en cualquier sistema.
+
+### 2. Iniciar sesión en el campus desde el servidor
+
+> [!IMPORTANT]
+> `browser_profile/` **no se puede copiar desde macOS ni desde Windows**. Chromium
+> cifra las cookies con una clave propia de cada sistema (el llavero en macOS,
+> DPAPI en Windows), así que el perfil llega al servidor sin sesión y el scrape
+> avisa de que ha caducado. Solo funciona copiarlo de un Linux a otro.
+
+Lo más sencillo es hacer el login en el propio servidor, con la ventana de
+Chromium reenviada a tu equipo por SSH (X11):
+
+- **macOS**: instala [XQuartz](https://www.xquartz.org) y **cierra sesión y vuelve a
+  entrar** antes de usarlo. Si no, rechaza las conexiones.
+- **Windows**: en vez de X11, ejecuta `mise run login` dentro de WSL y copia ese
+  `browser_profile/` al servidor. Es un perfil de Linux, así que sí funciona.
+- **Servidor**: necesita `X11Forwarding yes` en `/etc/ssh/sshd_config` y el paquete
+  `xauth`. En contenedores LXC sin IPv6, añade también `AddressFamily inet` o el
+  reenvío falla sin avisar.
+
+```bash
+ssh -Y usuario@servidor
+echo $DISPLAY                 # debe mostrar algo como localhost:10.0
+cd /opt/cesur-sync && mise run login
+```
+
+### 3. Activar el timer
 
 ```bash
 sudo cp systemd/moodle-sync.{service,timer} /etc/systemd/system/
 sudo systemctl enable --now moodle-sync.timer
+sudo systemctl start moodle-sync.service      # primera ejecución, para comprobarlo
+journalctl -u moodle-sync.service -n 50
 ```
 
-> [!IMPORTANT]
-> La sesión del campus y el token de Google se generan **en un equipo con
-> navegador** y se copian al servidor. Si caducan, vuelve a ejecutar `mise run login`
-> o `mise run google-login` en local y copia de nuevo `browser_profile/` o
-> `token.json`.
+Si la sesión del campus caduca, repite el paso 2. Si caduca el token de Google,
+vuelve a ejecutar `mise run google-login` en tu equipo y copia de nuevo
+`token.json`.
 
 ## Comandos
 
